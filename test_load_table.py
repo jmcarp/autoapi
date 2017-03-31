@@ -29,7 +29,9 @@ class TestLoadTable():
         self.meta = MetaData(bind=self.engine)
 
     def teardown_method(self, method):
-        self.meta.drop_all()
+        tables = utils.get_tables(engine=self.engine)
+        for table in tables:
+            utils.drop_table(table, metadata=self.meta, engine=self.engine)
 
     def load_table(self, tmpdir, csv_str, table_name, **kwargs):
         file_name = '{}.csv'.format(table_name)
@@ -40,10 +42,12 @@ class TestLoadTable():
         self.meta.reflect()
 
     def test_good_csv(self, tmpdir):
-        CSV = """name, dob, number_of_pets
-        Tom, 1980-02-26, 0
-        Dick, 1982-03-14, 3
-        Harry, 1972-11-24, 2
+        # True, TRUE, true => True
+        # False, FALSE, false => False
+        CSV = """name, dob, number_of_pets, weight, dog_lover
+        Tom, 1980-02-26, 0, 146.8, TRUE
+        Dick, 1982-03-14, 3, 183.1, False
+        Harry, 1972-11-24, 2, 178.7, false
         """
 
         self.load_table(tmpdir, CSV, 'people')
@@ -51,12 +55,14 @@ class TestLoadTable():
         assert 'people' in self.meta.tables
         people = self.meta.tables['people']
 
-        assert_column_type(people.columns['index'], int)
+        assert_column_type(people.columns['id'], int)
         assert_column_type(people.columns['name'], str)
         assert_column_type(people.columns['dob'], str)
-        assert_column_type(people.columns['number_of_pets'], str)
+        assert_column_type(people.columns['number_of_pets'], int)
+        assert_column_type(people.columns['weight'], float)
+        assert_column_type(people.columns['dog_lover'], bool)
 
-        assert people.columns['index'].primary_key is True
+        assert people.columns['id'].primary_key is True
         assert people.columns['name'].primary_key is False
 
         assert_columns_have_non_unique_indexes(self.engine, 'people', 'name',
@@ -64,10 +70,10 @@ class TestLoadTable():
 
         connection = self.engine.connect()
         results = connection.execute(
-            select([people]).order_by(people.c.index)).fetchall()
-        assert (0, 'Tom', '1980-02-26', '0') == results[0]
-        assert (1, 'Dick', '1982-03-14', '3') == results[1]
-        assert (2, 'Harry', '1972-11-24', '2') == results[2]
+            select([people]).order_by(people.c.id)).fetchall()
+        assert (1, 'Tom', '1980-02-26', 0, 146.8, True) == results[0]
+        assert (2, 'Dick', '1982-03-14', 3, 183.1, False) == results[1]
+        assert (3, 'Harry', '1972-11-24', 2, 178.7, False) == results[2]
 
     def test_load_with_chunking(self, tmpdir):
         CSV = """name, dob, number_of_pets
@@ -82,10 +88,10 @@ class TestLoadTable():
 
         connection = self.engine.connect()
         results = connection.execute(
-            select([people]).order_by(people.c.index)).fetchall()
-        assert (0, 'Tom', '1980-02-26', '0') == results[0]
-        assert (1, 'Dick', '1982-03-14', '3') == results[1]
-        assert (2, 'Harry', '1972-11-24', '2') == results[2]
+            select([people]).order_by(people.c.id)).fetchall()
+        assert (1, 'Tom', '1980-02-26', 0) == results[0]
+        assert (2, 'Dick', '1982-03-14', 3) == results[1]
+        assert (3, 'Harry', '1972-11-24', 2) == results[2]
 
     def test_empty_csv(self, tmpdir):
         file_name = 'empty.csv'
@@ -120,10 +126,10 @@ class TestLoadTable():
 
         connection = self.engine.connect()
         results = connection.execute(
-            select([people]).order_by(people.c.index)).fetchall()
-        assert (0, 'Tom', '0') == results[0]
-        assert (1, None, '3') == results[1]
-        assert (2, None, '2') == results[2]
+            select([people]).order_by(people.c.id)).fetchall()
+        assert (1, 'Tom', 0) == results[0]
+        assert (2, None, 3) == results[1]
+        assert (3, None, 2) == results[2]
 
     def test_embedded_space_in_tablename_and_filename(self, tmpdir):
         CSV = """name, number_of_pets

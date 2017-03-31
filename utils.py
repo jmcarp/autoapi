@@ -88,19 +88,20 @@ def load_table(filename,
     engine = engine or sa.create_engine(config.SQLA_URI)
     file = ensure_csv(filename)
     # Pass data types to iterator to ensure consistent types across chunks
-    dtypes = pd.read_csv(file.name, nrows=infer_size,
-                         skipinitialspace=True).dtypes
+    dtype = dict(pd.read_csv(file.name, nrows=infer_size,
+                 skipinitialspace=True).dtypes)
     chunks = pd.read_csv(file.name,
                          chunksize=chunksize,
-                         dtype=dtypes,
+                         dtype=dtype,
                          skipinitialspace=True)
     for idx, chunk in enumerate(chunks):
-        chunk.index += chunksize * idx
+        chunk.index += chunksize * idx + 1
+        chunk.index.name = 'id'
         to_sql(tablename,
                engine,
                chunk,
                chunksize=chunksize,
-               keys='index',
+               keys='id',
                if_exists='append', )
     _index_table(tablename, metadata, engine, config.CASE_INSENSITIVE)
 
@@ -111,7 +112,7 @@ def _index_table(tablename, metadata, engine, case_insensitive=False):
     """
     table = sa.Table(tablename, metadata, autoload_with=engine)
     for label, column in table.columns.items():
-        if label == 'index':
+        if label == 'id':
             continue
         index_name = 'ix_{0}'.format(label.lower())
         indexes = [sa.Index(index_name, column)]
@@ -141,7 +142,7 @@ def drop_table(tablename, metadata=None, engine=None):
 
 def get_tables(engine=None):
     engine = engine or sa.create_engine(config.SQLA_URI)
-    inspector = sa.engine.reflection.Inspector.from_engine(sandman2.db.engine)
+    inspector = sa.engine.reflection.Inspector.from_engine(engine)
     return set(inspector.get_table_names())
 
 
